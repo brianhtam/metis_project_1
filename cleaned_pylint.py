@@ -3,8 +3,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 def clean(week_nums):
-    “””
-    “””	
+    '''
+    Takes in a list of weeks, returns a dataframe with the CSV's combined and time 
+    
+    ~~~~
+    Parameters
+    ----
+    week_nums : TYPE = list (int)
+
+    Returns
+    ----
+    dfs : TYPE = dataframe
+    
+    '''	
     dfs = []
     for week_num in week_nums:
         url = "http://web.mta.info/developers/data/nyct/turnstile/turnstile_{}.txt"
@@ -32,6 +43,9 @@ week_nums = [190622]
 turnstiles_df = clean(week_nums)
 
 #add column specifying the prior block of time to find the change in total entries / exits
+'''
+This code creates groups based on SCP (physical turnstile lanes).
+'''
 turnstiles_block = (turnstiles_df
                         .groupby(["c_a", "unit", "scp", "station", "date_time", "exits"],as_index=False).entries.first())
 turnstiles_block[["prev_datetime", "prev_entries", "prev_exits"]] = (turnstiles_block
@@ -41,8 +55,20 @@ turnstiles_block[["prev_datetime", "prev_entries", "prev_exits"]] = (turnstiles_
 turnstiles_block.dropna(subset=["prev_datetime"], axis=0, inplace=True)
 
 def get_counts_entry(row, max_counter):
-    “””
-    “””
+    '''
+    When called, takes in a row number and a max counter value and applies a test to see if the counter makes sense, then returns the delta between entries.
+    
+    ~~~~
+    Parameters
+    ----
+    row : TYPE = int (row number in a dataframe)
+    max_counter : TYPE = int
+
+    Returns
+    ----
+    counter : TYPE = int
+    
+    '''
     counter = row["entries"] - row["prev_entries"]
     if counter < 0:
         # Maybe counter is reversed?
@@ -57,8 +83,20 @@ def get_counts_entry(row, max_counter):
     return counter
 
 def get_counts_exit(row, max_counter):
-    “””
-    “””
+    '''
+    When called, takes in a row number and a max counter value and applies a test to see if the counter makes sense, then returns the delta between exits.
+    
+    ~~~~
+    Parameters
+    ----
+    row : TYPE = int (row number in a dataframe)
+    max_counter : TYPE = int
+
+    Returns
+    ----
+    counter : TYPE = int
+    
+    '''
     counter = row["exits"] - row["prev_exits"]
     if counter < 0:
         # Maybe counter is reversed?
@@ -72,14 +110,21 @@ def get_counts_exit(row, max_counter):
         return 0
     return counter
 
-#filter outlier exit and entry zounts
-turnstiles_block['delta_entries'] = turnstiles_block.apply(get_counts_entry, axis=1, max_counter=1e5)
-turnstiles_block['delta_exits'] = turnstiles_block.apply(get_counts_exit, axis=1, max_counter=70000)
+#filter outlier exit and entry counts
+'''
+It is thought that it takes a minimum of 5 seconds to go through a turnstile. This means 2880 theoretical max input from an SCP in a 4 hour period. Increasing this by a factor of 5 gives us 14400, or about 15000
+'''
+turnstiles_block['delta_entries'] = turnstiles_block.apply(get_counts_entry, axis=1, max_counter=15000) #30000 max_counter value based on an order of magnitude larger than the highest possible values for SCP.
+turnstiles_block['delta_exits'] = turnstiles_block.apply(get_counts_exit, axis=1, max_counter=15000)
+
 
 #group turnstiles by time block, total
+'''
+This code sums turnstiles into Units (Remote units), or physical station locations based on billing. It keeps different names of stations still separate.
+'''
 unit_hourly = (turnstiles_block.groupby(['station','unit','date_time'])['delta_exits','delta_entries'].sum().reset_index())
 
-#highest exit count by station / time blocks overall
+#Dataframe that sums exit/entry counts count by station / time blocks overall (even with stations that have 2 different names)
 top = unit_hourly.groupby(['unit', 'date_time'])['delta_exits','delta_entries'].sum().reset_index()
 
 #head length variable-> visually assess list til 10 uniques
